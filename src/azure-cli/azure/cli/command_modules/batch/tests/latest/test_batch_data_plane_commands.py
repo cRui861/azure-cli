@@ -61,7 +61,7 @@ class BatchDataPlaneScenarioTests(BatchScenarioMixin, ScenarioTest):
                                 expect_failure=True)
 
         result = self.batch_cmd('batch pool create --id pool_image1 --vm-size Standard_DS1_v2 '
-                                '--image canonical:ubuntuserver:18.04-lts --node-agent-sku-id "batch.node.ubuntu 18.04" '
+                                '--image canonical:0001-com-ubuntu-server-jammy:22_04-lts --node-agent-sku-id "batch.node.ubuntu 22.04" '
                                 '--disk-encryption-targets "TemporaryDisk"')
 
         self.wait_for_pool_steady("pool_image1")
@@ -144,8 +144,8 @@ class BatchDataPlaneScenarioTests(BatchScenarioMixin, ScenarioTest):
         })
 
         self.batch_cmd('batch pool create --id {p_id} --vm-size "standard_d2s_v3" '
-                        '--image "canonical:ubuntuserver:18.04-lts" '
-                        '--node-agent-sku-id "batch.node.ubuntu 18.04" '
+                        '--image "canonical:0001-com-ubuntu-server-jammy:22_04-lts" '
+                        '--node-agent-sku-id "batch.node.ubuntu 22.04" '
                         '--target-dedicated-nodes 2 '
                         '--security-type "TrustedLaunch" '
                         '--encryption-at-host true '
@@ -182,8 +182,8 @@ class BatchDataPlaneScenarioTests(BatchScenarioMixin, ScenarioTest):
         })
 
         self.batch_cmd('batch pool create --id {p_id} --vm-size "standard_d2s_v3" '
-                        '--image "canonical:0001-com-ubuntu-server-focal:20_04-lts" '
-                        '--node-agent-sku-id "batch.node.ubuntu 20.04" '
+                        '--image "canonical:0001-com-ubuntu-server-jammy:22_04-lts" '
+                        '--node-agent-sku-id "batch.node.ubuntu 22.04" '
                         '--target-dedicated-nodes 2 '
                         '--os-disk-size 100 '
                         '--os-disk-caching ReadWrite '
@@ -311,6 +311,16 @@ class BatchDataPlaneScenarioTests(BatchScenarioMixin, ScenarioTest):
         self.assertTrue(any([i for i in result if i['id'] == 'xplatJobScheduleJobTests:job-1']))
         self.assertTrue(any([i for i in result if i['id'] == 'xplatJob']))
 
+        # test disable job-schedule
+        self.batch_cmd('batch job-schedule disable --job-schedule-id {js_id}')
+        self.batch_cmd('batch job-schedule show --job-schedule-id {js_id}').assert_with_checks([
+            self.check('state', 'disabled')])
+
+        # test enable job-schedule
+        self.batch_cmd('batch job-schedule enable --job-schedule-id {js_id}')
+        self.batch_cmd('batch job-schedule show --job-schedule-id {js_id}').assert_with_checks([
+            self.check('state', 'active')])
+
         self.batch_cmd('batch job delete --job-id {j_id} --yes')
 
     @ResourceGroupPreparer()
@@ -427,7 +437,7 @@ class BatchDataPlaneScenarioTests(BatchScenarioMixin, ScenarioTest):
 
         # test create pool using parameters
         self.batch_cmd('batch pool create --id {p_id} --vm-size Standard_DS1_v2 '
-                                '--image canonical:ubuntuserver:18.04-lts --node-agent-sku-id "batch.node.ubuntu 18.04" '
+                                '--image canonical:0001-com-ubuntu-server-jammy:22_04-lts --node-agent-sku-id "batch.node.ubuntu 22.04" '
                                 '--disk-encryption-targets "TemporaryDisk"')
 
         # test create job with missing parameters
@@ -465,7 +475,7 @@ class BatchDataPlaneScenarioTests(BatchScenarioMixin, ScenarioTest):
         self.batch_cmd('batch job show --job-id {j_id}').assert_with_checks([
             self.check('onAllTasksComplete', 'terminatejob'),
             self.check('constraints.maxTaskRetryCount', 0),
-            self.check('constraints.maxWallClockTime', 'P1279DT12H30M5S'),
+            self.check('constraints.maxWallClockTime', 'P4DT12H30M5S'),
             self.check('jobManagerTask.id', 'JobManager'),
             self.check('jobManagerTask.environmentSettings[0].name', 'CLI_TEST_VAR'),
             self.check('jobManagerTask.environmentSettings[0].value', 'CLI_TEST_VAR_VALUE'),
@@ -485,6 +495,16 @@ class BatchDataPlaneScenarioTests(BatchScenarioMixin, ScenarioTest):
 
         job = job.get_output_in_json()
         self.assertFalse(job['constraints']['maxWallClockTime'] == '1279 days, 12:30:05')
+
+        # test disable job with requeue option
+        self.batch_cmd('batch job disable --job-id {j_id} --disable-tasks requeue')
+        self.batch_cmd('batch job show --job-id {j_id}').assert_with_checks([
+            self.check('state', 'disabled')])
+
+        # test enable job
+        self.batch_cmd('batch job enable --job-id {j_id}')
+        self.batch_cmd('batch job show --job-id {j_id}').assert_with_checks([
+            self.check('state', 'active')])
 
         # task list (already have a job manager task)
         task_list = self.batch_cmd('batch task list --job-id {j_id}').get_output_in_json()
@@ -543,14 +563,14 @@ class BatchDataPlaneScenarioTests(BatchScenarioMixin, ScenarioTest):
 
         # test create pool using parameters
         self.batch_cmd('batch pool create --id {pool_i} --vm-size Standard_DS1_v2 '
-                       '--image Canonical:UbuntuServer:18.04-LTS '
-                       '--node-agent-sku-id "batch.node.ubuntu 18.04"')
+                       '--image canonical:0001-com-ubuntu-server-jammy:22_04-lts '
+                       '--node-agent-sku-id "batch.node.ubuntu 22.04"')
         
         # test that deprecated --target-communication argument causes argparse error
         with self.assertRaises(SystemExit):
             self.batch_cmd('batch pool create --id test-deprecated-arg --vm-size Standard_DS1_v2 '
-                           '--image Canonical:UbuntuServer:18.04-LTS '
-                           '--node-agent-sku-id "batch.node.ubuntu 18.04" '
+                           '--image canonical:0001-com-ubuntu-server-jammy:22_04-lts '
+                           '--node-agent-sku-id "batch.node.ubuntu 22.04" '
                            '--target-communication classic')
         
         # test that the deprecated targetNodeCommunicationMode property is not included in pool show output
@@ -559,7 +579,7 @@ class BatchDataPlaneScenarioTests(BatchScenarioMixin, ScenarioTest):
 
         # test create pool with missing parameters
         with self.assertRaises(SystemExit):
-            self.batch_cmd('batch pool create --id missing-params-test --image Canonical:UbuntuServer:18.04-LTS')
+            self.batch_cmd('batch pool create --id missing-params-test --image canonical:0001-com-ubuntu-server-jammy:22_04-lts')
 
         # test create pool with invalid vm size
         with self.assertRaisesRegex(CLIError, r"The value provided for one of the properties in the request body is invalid"):

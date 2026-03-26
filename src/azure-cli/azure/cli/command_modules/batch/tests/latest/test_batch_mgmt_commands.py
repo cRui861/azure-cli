@@ -89,6 +89,17 @@ class BatchMgmtScenarioTests(ScenarioTest):
             self.check('ends_with([0].endpoints[0].domainName, `batch.azure.com`)', True)
         ])
 
+        # test batch account login with shared key auth
+        self.cmd('batch account login -g {rg} -n {acc} --shared-key-auth --show').assert_with_checks([
+            self.check('account', '{acc}'),
+            self.check('primaryKey != null', True),
+            self.check('secondaryKey != null', True)])
+
+        # test batch account login with AAD auth
+        self.cmd('batch account login -g {rg} -n {acc} --show').assert_with_checks([
+            self.check('account', '{acc}'),
+            self.check('accessToken != null', True)])
+
         # test batch account delete
         self.cmd('batch account delete -g {rg} -n {acc} --yes')
         self.cmd('batch account delete -g {rg} -n {acc2} --yes')
@@ -108,6 +119,7 @@ class BatchMgmtApplicationScenarioTests(ScenarioTest):
 
     def __init__(self, method_name):
         super().__init__(method_name, recording_processors=[
+            BatchAccountKeyReplacer(),
             StorageSASReplacer()
         ])
 
@@ -191,10 +203,27 @@ class BatchMgmtApplicationScenarioTests(ScenarioTest):
 
         self.kwargs['accountId'] = batchaccount['id']
 
-        # create private endpoint
-        output = self.cmd('batch account network-profile network-rule add -n {acc} -g {rg} --profile BatchAccount --ip-address 1.2.3.6').assert_with_checks([
+        # add network rule
+        self.cmd('batch account network-profile network-rule add -n {acc} -g {rg} --profile BatchAccount --ip-address 1.2.3.6').assert_with_checks([
             self.check('accountAccess.defaultAction', 'Allow'),
-            self.check('accountAccess.ipRules[0].value', '1.2.3.6')]).get_output_in_json()
+            self.check('accountAccess.ipRules[0].value', '1.2.3.6')])
+
+        # test network-profile show
+        self.cmd('batch account network-profile show -n {acc} -g {rg}').assert_with_checks([
+            self.check('accountAccess.defaultAction', 'Allow'),
+            self.check('accountAccess.ipRules[0].value', '1.2.3.6')])
+
+        # test network-profile network-rule list
+        self.cmd('batch account network-profile network-rule list -n {acc} -g {rg}').assert_with_checks([
+            self.check('accountAccess.ipRules[0].value', '1.2.3.6')])
+
+        # test network-profile set
+        self.cmd('batch account network-profile set -n {acc} -g {rg} --profile BatchAccount --default-action Deny').assert_with_checks([
+            self.check('networkProfile.accountAccess.defaultAction', 'Deny')])
+
+        # test network-profile network-rule delete
+        self.cmd('batch account network-profile network-rule delete -n {acc} -g {rg} --profile BatchAccount --ip-address 1.2.3.6 --yes').assert_with_checks([
+            self.check('accountAccess.ipRules', [])])
 
 
     @ResourceGroupPreparer(location='eastus2')
@@ -346,12 +375,36 @@ class BatchMgmtApplicationScenarioTests(ScenarioTest):
                      self.check('format', 'zip'),
                      self.check('state', 'Active')])
 
+        # test application package list
+        self.cmd('batch application package list -g {rg} -n {acc} --application-name {app}').assert_with_checks([
+            self.check('length(@)', 1),
+            self.check('[0].name', '{app_p}'),
+            self.check('[0].state', 'Active')])
+
         self.cmd('batch application set -g {rg} -n {acc} --application-name {app} '
                  '--default-version {app_p}')
 
         self.cmd('batch application show -g {rg} -n {acc} --application-name {app}').assert_with_checks([
             self.check('name', '{app}'),
             self.check('defaultVersion', '{app_p}')])
+
+        # test application summary commands (data plane)
+        endpoint = self.cmd('batch account show -g {rg} -n {acc}').get_output_in_json()['accountEndpoint']
+        keys = self.cmd('batch account keys list -g {rg} -n {acc}').get_output_in_json()
+        self.kwargs.update({
+            'acc_endpoint': 'https://' + endpoint,
+            'acc_key': keys['primary']
+        })
+
+        self.cmd('batch application summary list '
+                 '--account-name {acc} --account-key "{acc_key}" --account-endpoint {acc_endpoint}').assert_with_checks([
+            self.check('length(@)', 1),
+            self.check('[0].id', '{app}')])
+
+        self.cmd('batch application summary show --application-id {app} '
+                 '--account-name {acc} --account-key "{acc_key}" --account-endpoint {acc_endpoint}').assert_with_checks([
+            self.check('id', '{app}'),
+            self.check('versions[0]', '{app_p}')])
 
         # test batch applcation delete
         self.cmd('batch application package delete -g {rg} -n {acc} --application-name {app} '
